@@ -140,80 +140,38 @@ jobs:
           exit 1
 
   # Job 4: Deploy to Railway
-deploy-railway:
-  name: Deploy to Railway
-  runs-on: ubuntu-latest
-  needs: build
-  if: github.ref == 'refs/heads/main'
-
-  steps:
-    - uses: actions/checkout@v4
-
-    - name: Install Railway CLI
-      run: npm install -g @railway/cli
-
-    - name: Auth & Deploy to Railway
-      env:
-        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
-      run: |
-        set -e
-
-        # เคลียร์ session เดิม (ถ้ามี)
-        railway logout || true
-
-        # เช็ก secrets
-        [ -z "$RAILWAY_TOKEN" ] && { echo "❌ Missing RAILWAY_TOKEN"; exit 1; }
-        [ -z "$RAILWAY_PROJECT_ID" ] && { echo "❌ Missing RAILWAY_PROJECT_ID"; exit 1; }
-
-        # ล้าง \r\n กันพังเวลา echo/parse
-        export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n')"
-
-        railway --version
-
-        # ✅ Login แบบ CI (CLI v4.10.0+)
-        echo "$RAILWAY_TOKEN" | railway login --ci
-
-        # ตรวจว่า auth ผ่านจริง
-        railway whoami || { echo "❌ Railway auth failed"; exit 1; }
-
-        echo "🔗 Linking project $RAILWAY_PROJECT_ID"
-        railway link -p "$RAILWAY_PROJECT_ID"
-
-        echo "🚀 Deploying to Railway..."
-        railway up --service flask-todo-cicd --detach
-
-    - name: Wait for deployment
-      run: sleep 60
-
-    - name: Health check
-      env:
-        APP_URL: ${{ secrets.RAILWAY_APP_URL }}   # e.g. https://flask-todo-cicd-production-xxxx.up.railway.app
-      run: |
-        set -e
-
-        [ -z "$APP_URL" ] && { echo "❌ RAILWAY_APP_URL is missing"; exit 1; }
-
-        # ล้าง \r \n และช่องว่างท้าย
-        APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
-        echo "Pinging $APP_URL_CLEAN ..."
-
-        success() { echo "✅ Railway deployment successful!"; exit 0; }
-
-        # ลองหลาย endpoint เผื่อโปรเจกต์ไม่มี /api/health
-        for i in {1..6}; do
-          code=$(curl -s -o /dev/null -w "%{http_code}" -L "$APP_URL_CLEAN/api/health" || true)
-          [ "$code" = "200" ] && success
-
-          code=$(curl -s -o /dev/null -w "%{http_code}" -L "$APP_URL_CLEAN/health" || true)
-          [ "$code" = "200" ] && success
-
-          code=$(curl -s -o /dev/null -w "%{http_code}" -L "$APP_URL_CLEAN" || true)
-          [ "$code" = "200" ] && success
-
-          echo "Attempt $i failed (last HTTP $code), retrying..."
-          sleep 10
-        done
-
-        echo "❌ Railway deployment health check failed"
-        exit 1
+  deploy-railway:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+      
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway link ${{ secrets.RAILWAY_PROJECT_ID }}
+          railway up --detach
+      
+      - name: Wait for deployment
+        run: sleep 60
+      
+      - name: Health check
+        run: |
+          for i in {1..5}; do
+            if curl -f ${{ secrets.RAILWAY_APP_URL }}/api/health; then
+              echo "Railway deployment successful!"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying..."
+            sleep 10
+          done
+          echo "Railway deployment health check failed"
+          exit 1
