@@ -31,6 +31,11 @@ def create_app(config_name=None):
             }
         )
 
+
+    @app.route("/api/health")
+    def health():
+        return jsonify(status="ok"), 200
+
     # Error handlers
     @app.errorhandler(404)
     def not_found(error):
@@ -46,11 +51,11 @@ def create_app(config_name=None):
         try:
             db.session.rollback()
         except Exception:
-            # ป้องกันกรณี session ปิดไปแล้ว
             pass
         return jsonify({"success": False, "error": "Internal server error"}), 500
 
     # Create tables
     with app.app_context():
         db.create_all()
+
     return app
