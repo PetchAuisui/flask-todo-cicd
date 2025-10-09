@@ -141,45 +141,71 @@ jobs:
 
   # Job 4: Deploy to Railway
   deploy-railway:
-      name: Deploy to Railway
-      runs-on: ubuntu-latest
-      needs: build
-      if: github.ref == 'refs/heads/main'
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
 
-      steps:
-        - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-        - name: Install Railway CLI
-          run: npm install -g @railway/cli
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
 
-        - name: Auth & Deploy to Railway
-          env:
-            RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-            RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
-          run: |
-            # เคลียร์ session เผื่อมีหลงเหลือ
-            railway logout || true
+      - name: Auth & Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+        run: |
+          # เคลียร์ session เผื่อมีหลงเหลือ
+          railway logout || true
 
-            # กัน token มี \r\n ติดมา
-            export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n')"
+          # เช็ค secret ที่จำเป็น
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "❌ Missing RAILWAY_TOKEN (Project Token)"; exit 1; fi
+          if [ -z "$RAILWAY_PROJECT_ID" ]; then
+            echo "❌ Missing RAILWAY_PROJECT_ID"; exit 1; fi
 
-            railway --version
-            echo "🚀 Deploying to Railway..."
-            railway up --service flask-todo-cicd --detach   # ไม่มี --yes
+          # ล้าง \r\n เผื่อมีบรรทัดใหม่ติดมา (กัน parse error)
+          export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n')"
 
-        - name: Wait for deployment
-          run: sleep 60
+          railway --version
+          echo "🔗 Linking project $RAILWAY_PROJECT_ID"
+          railway link -p "$RAILWAY_PROJECT_ID"
 
-        - name: Health check
-          run: |
-            for i in {1..5}; do
-              if curl -f ${{ secrets.RAILWAY_APP_URL }}/api/health; then
-                echo "✅ Railway deployment successful!"
-                exit 0
-              fi
-              echo "Attempt $i failed, retrying..."
-              sleep 10
-            done
-            echo "❌ Railway deployment health check failed"
-            exit 1
+          echo "🚀 Deploying to Railway..."
+          railway up --service flask-todo-cicd --detach
 
+      - name: Wait for deployment
+        run: sleep 60
+
+      - name: Health check
+        env:
+          APP_URL: ${{ secrets.RAILWAY_APP_URL }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "❌ RAILWAY_APP_URL is empty"; exit 1
+          fi
+
+          # ล้าง \r \n ออกจาก secret กันแตกบรรทัด และป้องกันช่องว่าง
+          APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
+          echo "Pinging $APP_URL_CLEAN ..."
+
+          success() { echo "✅ Railway deployment successful!"; exit 0; }
+
+          for i in {1..6}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -L "$APP_URL_CLEAN/api/health" || true)
+            [ "$code" = "200" ] && success
+
+            code=$(curl -s -o /dev/null -w "%{http_code}" -L "$APP_URL_CLEAN/health" || true)
+            [ "$code" = "200" ] && success
+
+            code=$(curl -s -o /dev/null -w "%{http_code}" -L "$APP_URL_CLEAN" || true)
+            [ "$code" = "200" ] && success
+
+            echo "Attempt $i failed (last code: $code), retrying..."
+            sleep 10
+          done
+
+          echo "❌ Railway deployment health check failed"
+          exit 1
