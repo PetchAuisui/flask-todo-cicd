@@ -152,13 +152,20 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy to Railway
+      - name: Auth & Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
         run: |
-          railway --version
-          railway up --service flask-todo-cicd --detach
+          # เคลียร์ state เก่า (ถ้ามี) แล้วล็อกอินด้วย token (โหมด CI)
+          railway logout || true
+
+          # ทำให้ token สะอาด ไม่มี \r หรือ \n ติดมา (กัน header parse error)
+          CLEAN_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n')"
+          railway login --token "$CLEAN_TOKEN"
+
+          # ใช้ RAILWAY_PROJECT_ID จาก env (ไม่ต้อง --project)
+          railway up --service flask-todo-cicd --detach --yes
 
       - name: Wait for deployment
         run: sleep 60
