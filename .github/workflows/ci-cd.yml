@@ -154,26 +154,27 @@ jobs:
 
       - name: Auth & Deploy to Railway
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}        # สร้างจาก Project → Settings → Tokens
-          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}  # Project ID จาก Project Settings
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
           SERVICE_NAME: flask-todo-cicd
         run: |
           set -e
 
-          # เคลียร์ session เดิม (กัน state ค้าง)
+          echo "🧹 Clearing old Railway session..."
           railway logout || true
 
-          # กัน token/ID มี \r\n หรือช่องว่างท้าย
+          # ล้าง \r\n เผื่อ token มีบรรทัดใหม่
           export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
           export RAILWAY_PROJECT_ID="$(printf '%s' "$RAILWAY_PROJECT_ID" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
 
           railway --version
+          echo "🔐 Logging into Railway with API key..."
+          railway login --apiKey "$RAILWAY_TOKEN"
 
-          echo "🔗 Linking project $RAILWAY_PROJECT_ID (ok ถ้าลิงก์อยู่แล้ว)"
-          railway link -p "$RAILWAY_PROJECT_ID" || true
+          echo "🔗 Linking project $RAILWAY_PROJECT_ID"
+          railway link -p "$RAILWAY_PROJECT_ID"
 
           echo "🚀 Deploying service: $SERVICE_NAME"
-          # ใช้ RAILWAY_TOKEN จาก env โดยไม่เรียก login แบบ interactive
           railway up --service "$SERVICE_NAME" --detach
 
       - name: Wait for deployment
@@ -181,31 +182,26 @@ jobs:
 
       - name: Health check
         env:
-          APP_URL: ${{ secrets.RAILWAY_APP_URL }}  # เช่น https://flask-todo-cicd-production-xxxx.up.railway.app
+          APP_URL: ${{ secrets.RAILWAY_APP_URL }}
         run: |
           set -e
-
           if [ -z "$APP_URL" ]; then
-            echo "❌ RAILWAY_APP_URL is missing"
-            exit 1
+            echo "❌ Missing RAILWAY_APP_URL"; exit 1
           fi
 
-          # sanitize URL: ตัด \r\n, เว้นวรรคท้าย, และ / ท้าย
           APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//' | sed 's:/*$::')"
-
           echo "Pinging ${APP_URL_CLEAN}/api/health ..."
 
-          # ไล่ตาม redirect (-L) และ retry รวม ~2 นาที
           for i in {1..12}; do
             code=$(curl -s -o /dev/null -w "%{http_code}" -L "${APP_URL_CLEAN}/api/health" || true)
             if [ "$code" = "200" ]; then
               echo "✅ Health OK (HTTP 200)"
               exit 0
             fi
-            echo "Attempt $i → HTTP $code, retrying in 10s..."
+            echo "Attempt $i → HTTP $code, retrying..."
             sleep 10
           done
 
-          echo "❌ Health check failed. Recent app logs:"
+          echo "❌ Railway health check failed."
           railway logs -n 200 || true
           exit 1
