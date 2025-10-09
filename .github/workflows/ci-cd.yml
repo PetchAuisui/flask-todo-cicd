@@ -138,7 +138,7 @@ jobs:
           done
           echo "Deployment health check failed"
           exit 1
-  
+
   # Job 4: Deploy to Railway
   deploy-railway:
     name: Deploy to Railway
@@ -152,26 +152,23 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Login & Deploy to Railway
+      - name: Deploy to Railway (non-interactive)
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
         run: |
           set -e
-
-          # sanitize token
           export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
 
           railway --version
+          echo "🚀 Deploying to Railway project $RAILWAY_PROJECT_ID ..."
 
-          echo "🔐 Logging into Railway..."
-          echo "$RAILWAY_TOKEN" | railway login
-
-          echo "🔗 Linking project..."
-          railway link -p "$RAILWAY_PROJECT_ID"
-
-          echo "🚀 Deploying service flask-todo-cicd..."
-          railway up --service flask-todo-cicd --detach
+          # ใช้ token จาก env ได้โดยตรง (ไม่ต้อง login)
+          railway up \
+            --service flask-todo-cicd \
+            --project "$RAILWAY_PROJECT_ID" \
+            --detach \
+            --token "$RAILWAY_TOKEN"
 
       - name: Wait for deployment
         run: sleep 60
@@ -200,3 +197,4 @@ jobs:
 
           echo "❌ Railway health check failed"
           exit 1
+
