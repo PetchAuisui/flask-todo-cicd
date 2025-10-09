@@ -157,14 +157,17 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
         run: |
-          # เคลียร์ state เก่า (ถ้ามี) แล้วล็อกอินด้วย token (โหมด CI)
+          # เคลียร์ session เก่าออกก่อน (ถ้ามี)
           railway logout || true
 
-          # ทำให้ token สะอาด ไม่มี \r หรือ \n ติดมา (กัน header parse error)
-          CLEAN_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n')"
-          railway login --token "$CLEAN_TOKEN"
+          # ทำให้ token สะอาด (ลบ \r และ \n ป้องกัน parse error)
+          export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n')"
 
-          # ใช้ RAILWAY_PROJECT_ID จาก env (ไม่ต้อง --project)
+          # ตรวจสอบเวอร์ชัน CLI
+          railway --version
+
+          # ใช้ env token โดยตรง (ไม่ต้อง login manual)
+          echo "Deploying Flask app to Railway..."
           railway up --service flask-todo-cicd --detach --yes
 
       - name: Wait for deployment
