@@ -149,33 +149,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Auth & Deploy to Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
-          SERVICE_NAME: flask-todo-cicd
-        run: |
-          set -e
-
-          echo "🧹 Clearing old Railway session..."
-          railway logout || true
-
-          # ล้าง \r\n เผื่อ token มีบรรทัดใหม่
-          export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
-          export RAILWAY_PROJECT_ID="$(printf '%s' "$RAILWAY_PROJECT_ID" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
-
-          railway --version
-          echo "🔐 Logging into Railway with API key..."
-          railway login --apiKey "$RAILWAY_TOKEN"
-
-          echo "🔗 Linking project $RAILWAY_PROJECT_ID"
-          railway link -p "$RAILWAY_PROJECT_ID"
-
-          echo "🚀 Deploying service: $SERVICE_NAME"
-          railway up --service "$SERVICE_NAME" --detach
+      # ใช้ Action ของ Railway โดยตรง
+      - name: Deploy via Railway Action
+        uses: railwayapp/railway-action@v0.2.11
+        with:
+          railwayToken: ${{ secrets.RAILWAY_TOKEN }}
+          projectId: ${{ secrets.RAILWAY_PROJECT_ID }}
+          serviceName: flask-todo-cicd
+          # envs: production   # (ถ้าต้องระบุ environment)
+          # detached: true     # (ถ้าต้องการ background deploy)
 
       - name: Wait for deployment
         run: sleep 60
@@ -188,10 +170,8 @@ jobs:
           if [ -z "$APP_URL" ]; then
             echo "❌ Missing RAILWAY_APP_URL"; exit 1
           fi
-
           APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//' | sed 's:/*$::')"
           echo "Pinging ${APP_URL_CLEAN}/api/health ..."
-
           for i in {1..12}; do
             code=$(curl -s -o /dev/null -w "%{http_code}" -L "${APP_URL_CLEAN}/api/health" || true)
             if [ "$code" = "200" ]; then
@@ -201,7 +181,6 @@ jobs:
             echo "Attempt $i → HTTP $code, retrying..."
             sleep 10
           done
-
-          echo "❌ Railway health check failed."
-          railway logs -n 200 || true
+          echo "❌ Health check failed (try reading service logs in Railway)."
           exit 1
+
