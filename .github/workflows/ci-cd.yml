@@ -141,73 +141,76 @@ jobs:
 
   # Job 4: Deploy to Railway
   deploy-railway:
-  name: Deploy to Railway
-  runs-on: ubuntu-latest
-  needs: build
-  if: github.ref == 'refs/heads/main'
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
 
-  steps:
-    - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-    - name: Install Railway CLI
-      run: npm install -g @railway/cli
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
 
-    - name: Login (write ~/.railway/config.json) & Link project
-      env:
-        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
-      run: |
-        set -euo pipefail
+      - name: Login & Link project
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+        run: |
+          set -euo pipefail
 
-        # 1) sanitize token (กัน \r \n และ space ท้าย)
-        CLEAN_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
-        if [ -z "$CLEAN_TOKEN" ]; then
-          echo "❌ RAILWAY_TOKEN is empty"; exit 1
-        fi
-        echo "::add-mask::$CLEAN_TOKEN"
-
-        # 2) เขียนไฟล์ config ให้ CLI
-        mkdir -p ~/.railway
-        printf '{"token":"%s"}' "$CLEAN_TOKEN" > ~/.railway/config.json
-
-        # 3) ตรวจสอบว่ามองเห็น token แล้ว
-        railway --version
-        if ! railway whoami >/dev/null 2>&1; then
-          echo "❌ Railway CLI still not authenticated"; exit 1
-        fi
-        echo "✅ Auth ok: $(railway whoami || true)"
-
-        # 4) link project แล้ว deploy
-        if [ -z "${RAILWAY_PROJECT_ID:-}" ]; then
-          echo "❌ RAILWAY_PROJECT_ID is missing"; exit 1
-        fi
-        echo "🔗 Linking project $RAILWAY_PROJECT_ID"
-        railway link -p "$RAILWAY_PROJECT_ID"
-
-        echo "🚀 Deploying service flask-todo-cicd"
-        railway up --service flask-todo-cicd --detach
-
-    - name: Wait for deployment
-      run: sleep 60
-
-    - name: Health check
-      env:
-        APP_URL: ${{ secrets.RAILWAY_APP_URL }}
-      run: |
-        set -e
-        if [ -z "${APP_URL:-}" ]; then
-          echo "❌ Missing RAILWAY_APP_URL"; exit 1
-        fi
-        APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's:[[:space:]]*$::' | sed 's:/*$::')"
-        echo "Pinging ${APP_URL_CLEAN}/api/health ..."
-        for i in {1..12}; do
-          code=$(curl -s -o /dev/null -w "%{http_code}" -L "${APP_URL_CLEAN}/api/health" || true)
-          if [ "$code" = "200" ]; then
-            echo "✅ Health OK (HTTP 200)"
-            exit 0
+          echo "🔐 Using Railway CLI token authentication"
+          CLEAN_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
+          if [ -z "$CLEAN_TOKEN" ]; then
+            echo "❌ RAILWAY_TOKEN is empty"
+            exit 1
           fi
-          echo "Attempt $i → HTTP $code, retrying..."
-          sleep 10
-        done
-        echo "❌ Railway health check failed."
-        exit 1
+          echo "::add-mask::$CLEAN_TOKEN"
+
+          mkdir -p ~/.railway
+          printf '{"token":"%s"}' "$CLEAN_TOKEN" > ~/.railway/config.json
+
+          railway --version
+          if ! railway whoami >/dev/null 2>&1; then
+            echo "❌ Railway CLI not authenticated"
+            exit 1
+          fi
+          echo "✅ Auth ok: $(railway whoami || true)"
+
+          if [ -z "${RAILWAY_PROJECT_ID:-}" ]; then
+            echo "❌ RAILWAY_PROJECT_ID missing"
+            exit 1
+          fi
+
+          echo "🔗 Linking project $RAILWAY_PROJECT_ID"
+          railway link -p "$RAILWAY_PROJECT_ID"
+
+          echo "🚀 Deploying service flask-todo-cicd"
+          railway up --service flask-todo-cicd --detach
+
+      - name: Wait for deployment
+        run: sleep 60
+
+      - name: Health check
+        env:
+          APP_URL: ${{ secrets.RAILWAY_APP_URL }}
+        run: |
+          set -e
+          if [ -z "${APP_URL:-}" ]; then
+            echo "❌ Missing RAILWAY_APP_URL"
+            exit 1
+          fi
+
+          APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's:[[:space:]]*$::' | sed 's:/*$::')"
+          echo "Pinging ${APP_URL_CLEAN}/api/health ..."
+          for i in {1..12}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -L "${APP_URL_CLEAN}/api/health" || true)
+            if [ "$code" = "200" ]; then
+              echo "✅ Health OK (HTTP 200)"
+              exit 0
+            fi
+            echo "Attempt $i → HTTP $code, retrying..."
+            sleep 10
+          done
+          echo "❌ Railway health check failed."
+          exit 1
