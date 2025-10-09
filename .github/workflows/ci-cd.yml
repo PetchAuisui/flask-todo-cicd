@@ -149,15 +149,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ใช้ Action ของ Railway โดยตรง
       - name: Deploy via Railway Action
-        uses: railwayapp/railway-action@v0.2.11
+        uses: railwayapp/actions@v0.2.11
         with:
           railwayToken: ${{ secrets.RAILWAY_TOKEN }}
           projectId: ${{ secrets.RAILWAY_PROJECT_ID }}
           serviceName: flask-todo-cicd
-          # envs: production   # (ถ้าต้องระบุ environment)
-          # detached: true     # (ถ้าต้องการ background deploy)
 
       - name: Wait for deployment
         run: sleep 60
@@ -170,6 +167,7 @@ jobs:
           if [ -z "$APP_URL" ]; then
             echo "❌ Missing RAILWAY_APP_URL"; exit 1
           fi
+
           APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//' | sed 's:/*$::')"
           echo "Pinging ${APP_URL_CLEAN}/api/health ..."
           for i in {1..12}; do
@@ -181,6 +179,6 @@ jobs:
             echo "Attempt $i → HTTP $code, retrying..."
             sleep 10
           done
-          echo "❌ Health check failed (try reading service logs in Railway)."
-          exit 1
 
+          echo "❌ Railway health check failed."
+          exit 1
