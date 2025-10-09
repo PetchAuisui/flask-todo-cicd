@@ -138,8 +138,7 @@ jobs:
           done
           echo "Deployment health check failed"
           exit 1
-
-  # Job 4: Deploy to Railway
+  
   # Job 4: Deploy to Railway
   deploy-railway:
     name: Deploy to Railway
@@ -160,19 +159,18 @@ jobs:
         run: |
           set -e
 
-          # sanitize token กัน \r\n และช่องว่างท้ายบรรทัด
+          # sanitize token
           export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
 
           railway --version
 
-          echo "🔐 Logging into Railway (CI mode)"
-          echo "$RAILWAY_TOKEN" | railway login --ci
+          echo "🔐 Logging into Railway..."
+          echo "$RAILWAY_TOKEN" | railway login
 
-          # (ถ้าโปรเจ็กต์ลิงก์ไว้แล้ว ข้ามได้ แต่รันซ้ำ ๆ ก็ไม่พัง)
-          echo "🔗 Linking project $RAILWAY_PROJECT_ID"
+          echo "🔗 Linking project..."
           railway link -p "$RAILWAY_PROJECT_ID"
 
-          echo "🚀 Deploy service: flask-todo-cicd"
+          echo "🚀 Deploying service flask-todo-cicd..."
           railway up --service flask-todo-cicd --detach
 
       - name: Wait for deployment
@@ -187,7 +185,6 @@ jobs:
             echo "❌ Missing RAILWAY_APP_URL"; exit 1
           fi
 
-          # ตัดช่องว่าง/สแลชท้าย URL
           APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//' | sed 's:/*$::')"
           echo "Pinging ${APP_URL_CLEAN}/api/health ..."
 
