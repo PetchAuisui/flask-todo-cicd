@@ -140,6 +140,7 @@ jobs:
           exit 1
 
   # Job 4: Deploy to Railway
+  # Job 4: Deploy to Railway
   deploy-railway:
     name: Deploy to Railway
     runs-on: ubuntu-latest
@@ -150,19 +151,28 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Railway CLI
-        run: npm i -g @railway/cli
+        run: npm install -g @railway/cli
 
-      - name: Deploy with Railway CLI
+      - name: Login & Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
         run: |
           set -e
-          # กัน \r\n/ช่องว่างจาก secret
+
+          # sanitize token กัน \r\n และช่องว่างท้ายบรรทัด
           export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
 
           railway --version
+
+          echo "🔐 Logging into Railway (CI mode)"
+          echo "$RAILWAY_TOKEN" | railway login --ci
+
+          # (ถ้าโปรเจ็กต์ลิงก์ไว้แล้ว ข้ามได้ แต่รันซ้ำ ๆ ก็ไม่พัง)
+          echo "🔗 Linking project $RAILWAY_PROJECT_ID"
           railway link -p "$RAILWAY_PROJECT_ID"
+
+          echo "🚀 Deploy service: flask-todo-cicd"
           railway up --service flask-todo-cicd --detach
 
       - name: Wait for deployment
@@ -177,8 +187,10 @@ jobs:
             echo "❌ Missing RAILWAY_APP_URL"; exit 1
           fi
 
+          # ตัดช่องว่าง/สแลชท้าย URL
           APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//' | sed 's:/*$::')"
           echo "Pinging ${APP_URL_CLEAN}/api/health ..."
+
           for i in {1..12}; do
             code=$(curl -s -o /dev/null -w "%{http_code}" -L "${APP_URL_CLEAN}/api/health" || true)
             if [ "$code" = "200" ]; then
@@ -189,5 +201,5 @@ jobs:
             sleep 10
           done
 
-          echo "❌ Railway health check failed."
+          echo "❌ Railway health check failed"
           exit 1
