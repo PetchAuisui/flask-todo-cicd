@@ -154,25 +154,29 @@ jobs:
 
       - name: Auth & Deploy to Railway
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}        # Project Token จาก Project → Settings → Tokens
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}  # Project ID จาก Project Info
         run: |
           # เคลียร์ session เผื่อมีหลงเหลือ
           railway logout || true
 
-          # เช็ค secret ที่จำเป็น
-          if [ -z "$RAILWAY_TOKEN" ]; then
-            echo "❌ Missing RAILWAY_TOKEN (Project Token)"; exit 1; fi
-          if [ -z "$RAILWAY_PROJECT_ID" ]; then
-            echo "❌ Missing RAILWAY_PROJECT_ID"; exit 1; fi
+          # ตรวจ secrets
+          [ -z "$RAILWAY_TOKEN" ] && { echo "❌ Missing RAILWAY_TOKEN"; exit 1; }
+          [ -z "$RAILWAY_PROJECT_ID" ] && { echo "❌ Missing RAILWAY_PROJECT_ID"; exit 1; }
 
-          # ล้าง \r\n เผื่อมีบรรทัดใหม่ติดมา (กัน parse error)
+          # ล้าง \r\n จาก token กันพังตอน login
           export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n')"
 
           railway --version
+
+          # 🔑 Login ด้วย Project Token (จำเป็นเพื่อกัน unauthorized)
+          railway login --token "$RAILWAY_TOKEN"
+
+          # ลิงก์โปรเจกต์ที่ถูกต้อง
           echo "🔗 Linking project $RAILWAY_PROJECT_ID"
           railway link -p "$RAILWAY_PROJECT_ID"
 
+          # Deploy service ชื่อ flask-todo-cicd
           echo "🚀 Deploying to Railway..."
           railway up --service flask-todo-cicd --detach
 
@@ -181,13 +185,13 @@ jobs:
 
       - name: Health check
         env:
-          APP_URL: ${{ secrets.RAILWAY_APP_URL }}
+          APP_URL: ${{ secrets.RAILWAY_APP_URL }}   # e.g. https://flask-todo-cicd-production-xxxx.up.railway.app (ไม่มี / ท้าย)
         run: |
           if [ -z "$APP_URL" ]; then
             echo "❌ RAILWAY_APP_URL is empty"; exit 1
           fi
 
-          # ล้าง \r \n ออกจาก secret กันแตกบรรทัด และป้องกันช่องว่าง
+          # ล้าง \r \n และช่องว่างท้าย
           APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
           echo "Pinging $APP_URL_CLEAN ..."
 
