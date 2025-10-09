@@ -154,66 +154,58 @@ jobs:
 
       - name: Auth & Deploy to Railway
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}        # สร้างจาก Project → Settings → Tokens
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}  # Project ID จาก Project Settings
+          SERVICE_NAME: flask-todo-cicd
         run: |
           set -e
 
-          # เคลียร์ session เดิม (ถ้ามี)
+          # เคลียร์ session เดิม (กัน state ค้าง)
           railway logout || true
 
-          # เช็ก secrets
-          [ -z "$RAILWAY_TOKEN" ] && { echo "❌ Missing RAILWAY_TOKEN"; exit 1; }
-          [ -z "$RAILWAY_PROJECT_ID" ] && { echo "❌ Missing RAILWAY_PROJECT_ID"; exit 1; }
-
-          # ล้าง \r\n กันพังเวลา echo/parse
-          export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n')"
+          # กัน token/ID มี \r\n หรือช่องว่างท้าย
+          export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
+          export RAILWAY_PROJECT_ID="$(printf '%s' "$RAILWAY_PROJECT_ID" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
 
           railway --version
 
-          # ✅ Login แบบ CI (CLI v4.10.0+)
-          echo "$RAILWAY_TOKEN" | railway login --ci
+          echo "🔗 Linking project $RAILWAY_PROJECT_ID (ok ถ้าลิงก์อยู่แล้ว)"
+          railway link -p "$RAILWAY_PROJECT_ID" || true
 
-          # ตรวจว่า auth ผ่านจริง
-          railway whoami || { echo "❌ Railway auth failed"; exit 1; }
-
-          echo "🔗 Linking project $RAILWAY_PROJECT_ID"
-          railway link -p "$RAILWAY_PROJECT_ID"
-
-          echo "🚀 Deploying to Railway..."
-          railway up --service flask-todo-cicd --detach
+          echo "🚀 Deploying service: $SERVICE_NAME"
+          # ใช้ RAILWAY_TOKEN จาก env โดยไม่เรียก login แบบ interactive
+          railway up --service "$SERVICE_NAME" --detach
 
       - name: Wait for deployment
         run: sleep 60
 
       - name: Health check
         env:
-          APP_URL: ${{ secrets.RAILWAY_APP_URL }}   # e.g. https://flask-todo-cicd-production-xxxx.up.railway.app
+          APP_URL: ${{ secrets.RAILWAY_APP_URL }}  # เช่น https://flask-todo-cicd-production-xxxx.up.railway.app
         run: |
           set -e
 
-          [ -z "$APP_URL" ] && { echo "❌ RAILWAY_APP_URL is missing"; exit 1; }
+          if [ -z "$APP_URL" ]; then
+            echo "❌ RAILWAY_APP_URL is missing"
+            exit 1
+          fi
 
-          # ล้าง \r \n และช่องว่างท้าย
-          APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
-          echo "Pinging $APP_URL_CLEAN ..."
+          # sanitize URL: ตัด \r\n, เว้นวรรคท้าย, และ / ท้าย
+          APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//' | sed 's:/*$::')"
 
-          success() { echo "✅ Railway deployment successful!"; exit 0; }
+          echo "Pinging ${APP_URL_CLEAN}/api/health ..."
 
-          # ลองหลาย endpoint เผื่อโปรเจกต์ไม่มี /api/health
-          for i in {1..6}; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" -L "$APP_URL_CLEAN/api/health" || true)
-            [ "$code" = "200" ] && success
-
-            code=$(curl -s -o /dev/null -w "%{http_code}" -L "$APP_URL_CLEAN/health" || true)
-            [ "$code" = "200" ] && success
-
-            code=$(curl -s -o /dev/null -w "%{http_code}" -L "$APP_URL_CLEAN" || true)
-            [ "$code" = "200" ] && success
-
-            echo "Attempt $i failed (last HTTP $code), retrying..."
+          # ไล่ตาม redirect (-L) และ retry รวม ~2 นาที
+          for i in {1..12}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -L "${APP_URL_CLEAN}/api/health" || true)
+            if [ "$code" = "200" ]; then
+              echo "✅ Health OK (HTTP 200)"
+              exit 0
+            fi
+            echo "Attempt $i → HTTP $code, retrying in 10s..."
             sleep 10
           done
 
-          echo "❌ Railway deployment health check failed"
+          echo "❌ Health check failed. Recent app logs:"
+          railway logs -n 200 || true
           exit 1
