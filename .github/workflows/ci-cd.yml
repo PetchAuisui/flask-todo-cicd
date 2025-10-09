@@ -154,29 +154,23 @@ jobs:
 
       - name: Auth & Deploy to Railway
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}        # Project Token จาก Project → Settings → Tokens
-          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}  # Project ID จาก Project Info
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
         run: |
-          # เคลียร์ session เผื่อมีหลงเหลือ
+          # เคลียร์ session เดิม (ถ้ามี)
           railway logout || true
 
-          # ตรวจ secrets
-          [ -z "$RAILWAY_TOKEN" ] && { echo "❌ Missing RAILWAY_TOKEN"; exit 1; }
-          [ -z "$RAILWAY_PROJECT_ID" ] && { echo "❌ Missing RAILWAY_PROJECT_ID"; exit 1; }
-
-          # ล้าง \r\n จาก token กันพังตอน login
+          # ล้าง \r\n เผื่อ token มีบรรทัดใหม่
           export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n')"
 
           railway --version
 
-          # 🔑 Login ด้วย Project Token (จำเป็นเพื่อกัน unauthorized)
-          railway login --token "$RAILWAY_TOKEN"
+          # ✅ Login แบบ CI (ใหม่สำหรับ Railway CLI v4.10.0+)
+          echo "$RAILWAY_TOKEN" | railway login --ci
 
-          # ลิงก์โปรเจกต์ที่ถูกต้อง
           echo "🔗 Linking project $RAILWAY_PROJECT_ID"
           railway link -p "$RAILWAY_PROJECT_ID"
 
-          # Deploy service ชื่อ flask-todo-cicd
           echo "🚀 Deploying to Railway..."
           railway up --service flask-todo-cicd --detach
 
@@ -185,29 +179,22 @@ jobs:
 
       - name: Health check
         env:
-          APP_URL: ${{ secrets.RAILWAY_APP_URL }}   # e.g. https://flask-todo-cicd-production-xxxx.up.railway.app (ไม่มี / ท้าย)
+          APP_URL: ${{ secrets.RAILWAY_APP_URL }}
         run: |
           if [ -z "$APP_URL" ]; then
-            echo "❌ RAILWAY_APP_URL is empty"; exit 1
+            echo "❌ RAILWAY_APP_URL is missing"; exit 1
           fi
 
-          # ล้าง \r \n และช่องว่างท้าย
           APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
-          echo "Pinging $APP_URL_CLEAN ..."
-
-          success() { echo "✅ Railway deployment successful!"; exit 0; }
+          echo "Pinging $APP_URL_CLEAN/api/health ..."
 
           for i in {1..6}; do
             code=$(curl -s -o /dev/null -w "%{http_code}" -L "$APP_URL_CLEAN/api/health" || true)
-            [ "$code" = "200" ] && success
-
-            code=$(curl -s -o /dev/null -w "%{http_code}" -L "$APP_URL_CLEAN/health" || true)
-            [ "$code" = "200" ] && success
-
-            code=$(curl -s -o /dev/null -w "%{http_code}" -L "$APP_URL_CLEAN" || true)
-            [ "$code" = "200" ] && success
-
-            echo "Attempt $i failed (last code: $code), retrying..."
+            if [ "$code" = "200" ]; then
+              echo "✅ Railway deployment successful!"
+              exit 0
+            fi
+            echo "Attempt $i failed (HTTP $code), retrying..."
             sleep 10
           done
 
