@@ -149,12 +149,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy via Railway Action
-        uses: railwayapp/railway-deploy@v1
-        with:
-          railwayToken: ${{ secrets.RAILWAY_TOKEN }}
-          projectId: ${{ secrets.RAILWAY_PROJECT_ID }}
-          serviceName: flask-todo-cicd
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
+
+      - name: Deploy with Railway CLI
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+        run: |
+          set -e
+          # กัน \r\n/ช่องว่างจาก secret
+          export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
+
+          railway --version
+          railway link -p "$RAILWAY_PROJECT_ID"
+          railway up --service flask-todo-cicd --detach
 
       - name: Wait for deployment
         run: sleep 60
