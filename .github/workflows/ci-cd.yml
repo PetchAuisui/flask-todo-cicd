@@ -158,20 +158,19 @@ jobs:
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
         run: |
           set -euo pipefail
-          echo "🔑 Using Railway CLI token authentication"
 
-          # sanitize token (กัน \r\n ตอน copy)
-          CLEAN_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n')"
-          echo "::add-mask::$CLEAN_TOKEN"
-          export RAILWAY_TOKEN="$CLEAN_TOKEN"
+          # กันกรณี token มี \r\n จากการคัดลอก
+          export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n')"
 
           railway --version
+          echo "🔐 Checking auth..."
+          railway whoami || { echo "❌ Railway token not working"; exit 1; }
 
           echo "🔗 Linking project $RAILWAY_PROJECT_ID"
           railway link -p "$RAILWAY_PROJECT_ID"
 
-          echo "🚀 Deploying service..."
-          railway up --service flask-todo-cicd --detach --yes
+          echo "🚀 Deploying service flask-todo-cicd"
+          railway up --service flask-todo-cicd --detach
 
       - name: Wait for deployment
         run: sleep 60
@@ -181,21 +180,16 @@ jobs:
           APP_URL: ${{ secrets.RAILWAY_APP_URL }}
         run: |
           set -e
-          if [ -z "${APP_URL:-}" ]; then
+          if [ -z "$APP_URL" ]; then
             echo "❌ Missing RAILWAY_APP_URL"; exit 1
           fi
-
           APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//' | sed 's:/*$::')"
-          echo "🌐 Pinging ${APP_URL_CLEAN}/api/health ..."
+          echo "Pinging ${APP_URL_CLEAN}/api/health ..."
           for i in {1..12}; do
             code=$(curl -s -o /dev/null -w "%{http_code}" -L "${APP_URL_CLEAN}/api/health" || true)
             if [ "$code" = "200" ]; then
-              echo "✅ Health OK (HTTP 200)"
-              exit 0
+              echo "✅ Health OK"; exit 0
             fi
-            echo "Attempt $i → HTTP $code, retrying..."
-            sleep 10
+            echo "Attempt $i → HTTP $code, retrying..."; sleep 10
           done
-
-          echo "❌ Railway health check failed."
-          exit 1
+          echo "❌ Railway health check failed"; exit 1
