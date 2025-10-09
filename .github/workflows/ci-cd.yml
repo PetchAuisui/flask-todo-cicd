@@ -152,23 +152,31 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy to Railway (non-interactive)
+      - name: Login & Link project
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
         run: |
-          set -e
-          export RAILWAY_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
+          set -euo pipefail
+
+          # กัน \r\n/ช่องว่างจาก secrets
+          TOKEN_CLEAN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
+          PROJ_CLEAN="$(printf '%s' "$RAILWAY_PROJECT_ID" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
 
           railway --version
-          echo "🚀 Deploying to Railway project $RAILWAY_PROJECT_ID ..."
 
-          # ใช้ token จาก env ได้โดยตรง (ไม่ต้อง login)
-          railway up \
-            --service flask-todo-cicd \
-            --project "$RAILWAY_PROJECT_ID" \
-            --detach \
-            --token "$RAILWAY_TOKEN"
+          # ล็อกอินแบบ non-interactive ด้วย api key
+          echo "$TOKEN_CLEAN" | railway login --apiKey
+
+          # ผูกโปรเจกต์ให้กับ working dir
+          railway link -p "$PROJ_CLEAN"
+
+      - name: Deploy service
+        run: |
+          set -euo pipefail
+          echo "🚀 Deploying with Railway CLI…"
+          # ระบุ service ของคุณ และรันแบบไม่ต้องถามตอบ
+          railway up --service flask-todo-cicd --detach --yes
 
       - name: Wait for deployment
         run: sleep 60
@@ -178,13 +186,12 @@ jobs:
           APP_URL: ${{ secrets.RAILWAY_APP_URL }}
         run: |
           set -e
-          if [ -z "$APP_URL" ]; then
+          if [ -z "${APP_URL:-}" ]; then
             echo "❌ Missing RAILWAY_APP_URL"; exit 1
           fi
 
           APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//' | sed 's:/*$::')"
           echo "Pinging ${APP_URL_CLEAN}/api/health ..."
-
           for i in {1..12}; do
             code=$(curl -s -o /dev/null -w "%{http_code}" -L "${APP_URL_CLEAN}/api/health" || true)
             if [ "$code" = "200" ]; then
@@ -194,7 +201,5 @@ jobs:
             echo "Attempt $i → HTTP $code, retrying..."
             sleep 10
           done
-
-          echo "❌ Railway health check failed"
+          echo "❌ Railway health check failed."
           exit 1
-
