@@ -31,7 +31,7 @@ def create_app(config_name=None):
             }
         )
 
-    # Health check endpoint
+
     @app.route("/api/health")
     def health():
         return jsonify(status="ok"), 200
