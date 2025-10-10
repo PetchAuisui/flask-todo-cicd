@@ -139,7 +139,7 @@ jobs:
           echo "Deployment health check failed"
           exit 1
 
-  # Job 4: Verify Railway deployment (auto-deploy)
+  # Job 4: Deploy to Reilway
   deploy-railway:
     name: Verify Railway Deployment
     runs-on: ubuntu-latest
