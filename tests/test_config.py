@@ -1,13 +1,14 @@
 # tests/test_config.py
 
 import os
+
 import pytest
 
 from app.config import (
     Config,
     DevelopmentConfig,
-    TestingConfig,
     ProductionConfig,
+    TestingConfig,
     config,
 )
 

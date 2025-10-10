@@ -1,8 +1,10 @@
-import pytest
 from unittest.mock import patch
+
+import pytest
 from sqlalchemy.exc import SQLAlchemyError
+
 from app import create_app
-from app.models import db, Todo
+from app.models import Todo, db
 
 
 @pytest.fixture

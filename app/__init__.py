@@ -1,15 +1,16 @@
 import os
+
 from flask import Flask, jsonify
-from app.models import db
-from app.routes import api
-from app.config import config
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+from app.config import config
+from app.models import db
+from app.routes import api
 
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"]
+    default_limits=["200 per day", "50 per hour"],
 )
 
 
@@ -24,7 +25,7 @@ def create_app(config_name=None):
 
     # Initialize extensions
     db.init_app(app)
-    limiter.init_app(app)  
+    limiter.init_app(app)  # ผูก limiter หลังสร้าง app แล้ว
 
     # Register blueprints
     app.register_blueprint(api, url_prefix="/api")
@@ -32,14 +33,13 @@ def create_app(config_name=None):
     # Root endpoint
     @app.route("/")
     def index():
-        return jsonify({
-            "message": "Flask Todo API",
-            "version": "1.0.0",
-            "endpoints": {
-                "health": "/api/health",
-                "todos": "/api/todos",
-            },
-        })
+        return jsonify(
+            {
+                "message": "Flask Todo API",
+                "version": "1.0.0",
+                "endpoints": {"health": "/api/health", "todos": "/api/todos"},
+            }
+        )
 
     @app.route("/api/health")
     def health():

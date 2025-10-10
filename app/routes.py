@@ -1,6 +1,7 @@
-from flask import Blueprint, request, jsonify
-from app.models import db, Todo
+from flask import Blueprint, jsonify, request
 from sqlalchemy.exc import SQLAlchemyError
+
+from app.models import Todo, db
 
 api = Blueprint("api", __name__)
 
