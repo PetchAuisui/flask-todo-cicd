@@ -139,28 +139,44 @@ jobs:
           echo "Deployment health check failed"
           exit 1
 
-  # Job 4: Deploy to Reilway
-  deploy-railway:
-    name: Deploy to Reilway
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main'
+# Job 4: Verify Railway deployment (auto-deploy)
+deploy-railway:
+  name: Deploy to Railway
+  runs-on: ubuntu-latest
+  needs: build
+  if: github.ref == 'refs/heads/main'
 
-    steps:
-      - name: Wait for Railway auto-deploy to finish
-        run: sleep 90 # เผื่อเวลาสร้าง container/ดึง image
-
-      - name: Health check Railway app
-        env:
-          RAILWAY_APP_URL: ${{ secrets.RAILWAY_APP_URL }}
-        run: |
-          for i in {1..8}; do
-            if curl -fsSL "$RAILWAY_APP_URL/api/health" > /dev/null; then
-              echo "Railway deployment healthy ✅"
-              exit 0
-            fi
-            echo "Attempt $i failed, retrying in 10s..."
-            sleep 10
-          done
-          echo "Railway deployment health check failed ❌"
+  steps:
+    - name: Ensure RAILWAY_APP_URL secret exists
+      shell: bash
+      run: |
+        if [ -z "${{ secrets.RAILWAY_APP_URL }}" ]; then
+          echo "❌ Missing secret: RAILWAY_APP_URL"
           exit 1
+        fi
+
+    # เผื่อเวลาที่ Railway ดึง image/สปินคอนเทนเนอร์ + cold start
+    - name: Initial wait
+      run: sleep 90
+
+    - name: Health check Railway app
+      env:
+        RAILWAY_APP_URL: ${{ secrets.RAILWAY_APP_URL }}
+      shell: bash
+      run: |
+        echo "Checking: $RAILWAY_APP_URL/api/health"
+        # รวมเวลารอ ~ 8 * 15s = 120s (2 นาที) + initial 90s = รวมราว 3.5 นาที
+        for i in {1..8}; do
+          # --max-time กันการแฮง, -f fail on >=400, -s เงียบ, -S แสดง error
+          if curl -fSsS --max-time 10 "$RAILWAY_APP_URL/api/health" > /tmp/health.json; then
+            echo "✅ Railway deployment healthy"
+            cat /tmp/health.json || true
+            exit 0
+          fi
+          echo "Attempt $i failed. Retrying in 15s…"
+          sleep 15
+        done
+
+        echo "❌ Railway deployment health check failed. Last response (if any):"
+        cat /tmp/health.json || echo "No response captured."
+        exit 1
