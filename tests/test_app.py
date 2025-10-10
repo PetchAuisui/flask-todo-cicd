@@ -1,10 +1,8 @@
-from unittest.mock import patch
-
 import pytest
+from unittest.mock import patch
 from sqlalchemy.exc import SQLAlchemyError
-
 from app import create_app
-from app.models import Todo, db
+from app.models import db, Todo
 
 
 @pytest.fixture
@@ -440,3 +438,64 @@ class TestIntegration:
         # Verify count decreased
         response = client.get("/api/todos")
         assert response.get_json()["count"] == 4
+
+class TestAdditionalAPI:
+    """Additional API tests for edge cases and HTTP methods"""
+def test_create_without_json_content_type(client):
+    """POST /api/todos แบบไม่ส่ง JSON header"""
+    res = client.post("/api/todos", data="title=bad")
+    assert res.status_code in (400, 500)
+    data = res.get_json()
+    assert data["success"] is False
+    assert "error" in data
+
+
+def test_method_not_allowed_on_collection(client):
+    """PUT /api/todos (collection) ควรไม่อนุญาต"""
+    res = client.put("/api/todos", json={"title": "x"})
+    assert res.status_code in (405, 500)
+
+
+def test_update_without_json_body(client, app):
+    """PUT /api/todos/<id> แต่ไม่ส่ง JSON"""
+    with app.app_context():
+        todo = Todo(title="need json")
+        db.session.add(todo)
+        db.session.commit()
+        todo_id = todo.id
+
+    res = client.put(f"/api/todos/{todo_id}", data="title=no-json")
+    assert res.status_code in (400, 500)
+    data = res.get_json()
+    assert data["success"] is False
+
+
+def test_update_with_invalid_field_types(client, app):
+    """PUT /api/todos/<id> ส่งชนิดข้อมูลผิด"""
+    with app.app_context():
+        todo = Todo(title="bad types")
+        db.session.add(todo)
+        db.session.commit()
+        todo_id = todo.id
+
+    res = client.put(
+        f"/api/todos/{todo_id}",
+        json={"title": 123, "completed": "yes"},
+    )
+    assert res.status_code in (400, 422, 500)
+    data = res.get_json()
+    assert data["success"] is False
+    assert "error" in data
+
+
+def test_head_root_ok(client):
+    """HEAD / ควรตอบ 200 เช่นเดียวกับ GET /"""
+    res = client.head("/")
+    assert res.status_code == 200
+
+
+def test_options_todos_ok(client):
+    """OPTIONS /api/todos อย่างน้อยต้องไม่ error (200/204)"""
+    res = client.open("/api/todos", method="OPTIONS")
+    assert res.status_code in (200, 204)
+
