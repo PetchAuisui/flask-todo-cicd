@@ -151,22 +151,25 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Railway CLI
-        run: npm install -g @railway/cli
+        run: npm install -g @railway/cli@latest
 
-      - name: Show CLI version (for debug)
+      - name: Show CLI version (debug)
         run: railway --version
 
-      - name: Deploy to Railway
+      # เลือกโปรเจกต์ (non-interactive) โดยใช้ token จาก secrets
+      - name: Select Railway project
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
-          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }} # ถ้าคุณกำหนดชื่อ service
         run: |
-          # ใช้ CLI ในโหมด non-interactive, ระบุ project + service
-          railway up \
-            --project "$RAILWAY_PROJECT_ID" \
-            --service "$RAILWAY_SERVICE_ID" \
-            --detach
+          railway use --project "$RAILWAY_PROJECT_ID"
+
+      # ถ้ามีหลาย service แนะนำระบุ --service ให้ตรงชื่อ/ID ของ service คุณ
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up --service "flask-todo-cicd" --detach
 
       - name: Wait for deployment
         run: sleep 60
@@ -184,3 +187,4 @@ jobs:
             sleep 10
           done
           echo "Railway deployment health check failed"
+          exit 1
