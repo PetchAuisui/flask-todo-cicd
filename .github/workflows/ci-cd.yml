@@ -2,12 +2,12 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 env:
-  PYTHON_VERSION: '3.11'
+  PYTHON_VERSION: "3.11"
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
@@ -16,7 +16,7 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgres:16-alpine
@@ -31,35 +31,35 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-      
+          cache: "pip"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      
+
       - name: Run linting
         run: |
           pip install flake8
           flake8 app --count --select=E9,F63,F7,F82 --show-source --statistics
           flake8 app --count --max-line-length=120 --statistics
-      
+
       - name: Run tests with coverage
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
           FLASK_ENV: testing
         run: |
           pytest --cov=app --cov-report=xml --cov-report=term
-      
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
@@ -72,25 +72,25 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name == 'push'
-    
+
     permissions:
       contents: read
       packages: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Log in to Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -100,7 +100,7 @@ jobs:
             type=ref,event=branch
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
-      
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -117,15 +117,15 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     if: github.ref == 'refs/heads/main'
-    
+
     steps:
       - name: Trigger Render Deployment
         run: |
           curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-      
+
       - name: Wait for deployment
         run: sleep 60
-      
+
       - name: Health check
         run: |
           for i in {1..5}; do
@@ -147,70 +147,40 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Login & Link project
+      - name: Show CLI version (for debug)
+        run: railway --version
+
+      - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }} # ถ้าคุณกำหนดชื่อ service
         run: |
-          set -euo pipefail
-
-          echo "🔐 Using Railway CLI token authentication"
-          CLEAN_TOKEN="$(printf '%s' "$RAILWAY_TOKEN" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
-          if [ -z "$CLEAN_TOKEN" ]; then
-            echo "❌ RAILWAY_TOKEN is empty"
-            exit 1
-          fi
-          echo "::add-mask::$CLEAN_TOKEN"
-
-          mkdir -p ~/.railway
-          printf '{"token":"%s"}' "$CLEAN_TOKEN" > ~/.railway/config.json
-
-          railway --version
-          if ! railway whoami >/dev/null 2>&1; then
-            echo "❌ Railway CLI not authenticated"
-            exit 1
-          fi
-          echo "✅ Auth ok: $(railway whoami || true)"
-
-          if [ -z "${RAILWAY_PROJECT_ID:-}" ]; then
-            echo "❌ RAILWAY_PROJECT_ID missing"
-            exit 1
-          fi
-
-          echo "🔗 Linking project $RAILWAY_PROJECT_ID"
-          railway link -p "$RAILWAY_PROJECT_ID"
-
-          echo "🚀 Deploying service flask-todo-cicd"
-          railway up --service flask-todo-cicd --detach
+          # ใช้ CLI ในโหมด non-interactive, ระบุ project + service
+          railway up \
+            --project "$RAILWAY_PROJECT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            --detach
 
       - name: Wait for deployment
         run: sleep 60
 
       - name: Health check
         env:
-          APP_URL: ${{ secrets.RAILWAY_APP_URL }}
+          RAILWAY_APP_URL: ${{ secrets.RAILWAY_APP_URL }}
         run: |
-          set -e
-          if [ -z "${APP_URL:-}" ]; then
-            echo "❌ Missing RAILWAY_APP_URL"
-            exit 1
-          fi
-
-          APP_URL_CLEAN="$(printf '%s' "$APP_URL" | tr -d '\r\n' | sed 's:[[:space:]]*$::' | sed 's:/*$::')"
-          echo "Pinging ${APP_URL_CLEAN}/api/health ..."
-          for i in {1..12}; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" -L "${APP_URL_CLEAN}/api/health" || true)
-            if [ "$code" = "200" ]; then
-              echo "✅ Health OK (HTTP 200)"
+          for i in {1..5}; do
+            if curl -fsSL "$RAILWAY_APP_URL/api/health" > /dev/null; then
+              echo "Railway deployment successful!"
               exit 0
             fi
-            echo "Attempt $i → HTTP $code, retrying..."
+            echo "Attempt $i failed, retrying..."
             sleep 10
           done
-          echo "❌ Railway health check failed."
-          exit 1
+          echo "Railway deployment health check failed"
