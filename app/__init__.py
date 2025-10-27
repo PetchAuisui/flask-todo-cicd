@@ -15,21 +15,20 @@ def create_app(config_name=None):
     app.config.from_object(config[config_name])
     config[config_name].init_app(app)
 
-    # Enable CORS for GitHub Pages
-    # แก้ไข code บรรทัด "https://your-username.github.io"  ให้เป็นโดเมนของเว็บตนเอง
     CORS(app, resources={
         r"/api/*": {
             "origins": [
                 "http://localhost:3000",
                 "http://localhost:5000",
-                "https://*.github.io",
-                "https://your-username.github.io"
+                "https://petchauisui.github.io",
+                "https://petchauisui.github.io/todo-frontend"
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type"],
             "supports_credentials": False
         }
     })
+
 
     db.init_app(app)
     app.register_blueprint(api, url_prefix='/api')
