@@ -21,8 +21,8 @@ def create_app(config_name=None):
             "origins": [
                 "http://localhost:3000",
                 "http://localhost:5000",
-                "https://PetchAuisui.github.io",
-                "https://PetchAuisui.github.io/todo-frontend"
+                "https://petchauisui.github.io",
+                "https://petchauisui.github.io/todo-frontend",
                 "https://flask-todo-app-90g0.onrender.com"
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
