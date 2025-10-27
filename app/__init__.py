@@ -15,20 +15,20 @@ def create_app(config_name=None):
     app.config.from_object(config[config_name])
     config[config_name].init_app(app)
 
+    # Enable CORS for GitHub Pages
     CORS(app, resources={
         r"/api/*": {
             "origins": [
                 "http://localhost:3000",
                 "http://localhost:5000",
-                "https://petchauisui.github.io",
-                "https://petchauisui.github.io/todo-frontend"
+                "https://*.github.io",
+                "https://PetchAuisui.github.io"
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type"],
             "supports_credentials": False
         }
     })
-
 
     db.init_app(app)
     app.register_blueprint(api, url_prefix='/api')
