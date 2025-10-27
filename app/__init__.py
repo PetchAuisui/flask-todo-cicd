@@ -23,6 +23,7 @@ def create_app(config_name=None):
                 "http://localhost:5000",
                 "https://PetchAuisui.github.io",
                 "https://PetchAuisui.github.io/todo-frontend"
+                "https://flask-todo-app-90g0.onrender.com"
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type"],
