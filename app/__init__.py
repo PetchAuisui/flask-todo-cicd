@@ -21,8 +21,8 @@ def create_app(config_name=None):
             "origins": [
                 "http://localhost:3000",
                 "http://localhost:5000",
-                "https://*.github.io",
-                "https://PetchAuisui.github.io"
+                "https://PetchAuisui.github.io",
+                "https://PetchAuisui.github.io/todo-frontend"
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type"],
